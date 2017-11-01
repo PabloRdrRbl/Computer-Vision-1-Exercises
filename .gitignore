@@ -1,1 +1,13 @@
+# First, ignore everything
+*
+# Now, whitelist directories
+!src
+# And all the file types you're interested in.
+!*.cpp
+!*.jpg
+
+# Blacklist
 .DS_Store
+MakeFile
+*#*
+
