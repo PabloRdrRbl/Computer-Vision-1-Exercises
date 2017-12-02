@@ -35,9 +35,10 @@ using namespace std;
 #define MaxPoints 2
 int nb_points = 0;
 
-Mat MapCurveimage512;
-Mat image, mapped_result_img;
+Mat MapCurveImage512;
+Mat image, color_img;
 CvPoint  SrcPtInt[MaxPoints];
+unsigned char LUtable[256];
 
 void help()
 {
@@ -57,6 +58,7 @@ void on_mouse( int event, int x, int y, int flags, void* param ){
   switch( event ){
         case CV_EVENT_LBUTTONDOWN:{
           // add new point to polygon
+          // two points have to be clicked
           if (nb_points < MaxPoints){  
 
             // CvPoint type
@@ -65,17 +67,16 @@ void on_mouse( int event, int x, int y, int flags, void* param ){
 
             // second point in SrcPtInt
             if (nb_points){ 
-				   
-              MapCurveimage512 = 0;
+
+              // Clear image for the curve
+              MapCurveImage512 = 0;
 
               // read the two extrema points
               int x1 = SrcPtInt[0].x;	
               int x2 = SrcPtInt[1].x;
               // "511 -" because we want "0" in lower left corner
-              int y1 = SrcPtInt[0].y; 
-              int y2 = SrcPtInt[1].y;
-
-              line(MapCurveimage512, SrcPtInt[0], SrcPtInt[1], CV_RGB(255, 255, 255));
+              int y1 = 551 - SrcPtInt[0].y; 
+              int y2 = 551 - SrcPtInt[1].y;
               
               // determine polynomial coefficients of y(x):=a*(x-x0)**3-b*x+c
               double dx = x1 - x2;
@@ -89,54 +90,48 @@ void on_mouse( int event, int x, int y, int flags, void* param ){
  
               // create the LUT for that polynom and 
               // draw the polynom in the MapCurveimage (pixelwise)
-              vector<Point2f> curvePoints;
+              Point MappingCurvePoint_1 = Point(0,0);
+              Point MappingCurvePoint_2;
               
-              for (float xx = x1; xx <= x2; xx++){
-                int yy = a * pow(xx - x0, 3) - b * xx + c;
-                Point2f new_point = Point2f(xx, yy);
-                curvePoints.push_back(new_point);  // Add point to vector
-              } // end for
+              for (int i=0; i<256; i++){
+                int k;
+                k = (int) (a*pow(i-x0,3) - b*i + c);
+                if (k<0) k=0;
+                else if (k>511);
 
-              // Use polylines
-              Mat curve(curvePoints, true);
-              curve.convertTo(curve, CV_32S);
-              polylines(MapCurveimage512, curve, false, Scalar(255), 2, CV_AA);
-
-              // use the lookup table (LUT) to map the input image to the result image
-              // use the same LUT for each color channel (or fantasize)
-              
-              // The horizontal axis of the graph represents the input levels (original image values)
-              // and the vertical axis represents the output levels (new adjusted values)
-              std::vector<char> lut(256);
-              for (int i = 0; i < 256; i++) {
-                if(i < x1){
-                  lut[i] = 0;
+                if (!(i % 2)){
+                  LUtable[i/2] = (char)(k/2);
                 }
-                else if(i >= x1 & i <= x2){
-                  lut[i] = curvePoints[i - x1].y;
-                }
-                else{
-                  lut[i] = 256;
-                } // end if
-                  
-              } // end for
 
-              LUT(image, lut, mapped_result_img);
-              
-              
-              // show non-linear mapping curve
-              imshow("GreyCurve", MapCurveimage512);
-				   
-              // show the result
-              imshow("Result image", mapped_result_img );
+                
+                // MapCurveImage512.at<char>(511-k,i)=(char)255;         // without lines between each point we would have the points only
+                MappingCurvePoint_2 = Point(i, 511 - k);
+                line(MapCurveImage512, MappingCurvePoint_1, MappingCurvePoint_2, CV_RGB(255, 255, 255));  // lines between each point
+                MappingCurvePoint_1 = MappingCurvePoint_2;
+				   }
+              // Let opencv do the lookup table transform
+              // LUT(image, Mat(1, 256, CV_8U, LUtable), color_img);
 
-              // mapped_result_img = image.clone();
-              nb_points = 0;              
+               // Or in this case, we want to do the lookup table transform ourselves
+               uchar *pIm1 = image.data;
+               uchar *pIm2 = color_img.data;
+               int totalNumberSubPixels = image.rows * image.step[0]; 
+               for (int i = 0; i<totalNumberSubPixels; i++)
+               {
+                  pIm2[i] = LUtable[pIm1[i]];
+               }
+
+				   // Show non-linear mapping curve
+				   imshow( "GreyCurve", MapCurveImage512);
+
+				   // Show the result
+				   imshow( "result image", color_img );
+
+                   nb_points = 0;
             } // end if
 
             else nb_points++;
-            
-          }  //end if
+          } // end if
           break;
         } // end case
     } // end switch
@@ -152,14 +147,14 @@ int main( int argc, char** argv ){
 
   // Mat::clone
   // Creates a full copy of the array and the underlying data
-  mapped_result_img = image.clone();
+  color_img = image.clone();
 
   // Create two windows
   namedWindow("Original Image");
   namedWindow("GreyCurve");
 
   // Show original image
-  imshow("Original Image", mapped_result_img);
+  imshow("Original Image", color_img);
 
   // Mat::create
   // Allocates new array data if needed
@@ -167,13 +162,13 @@ int main( int argc, char** argv ){
   // CV_8U is unsigned 8bit/pixel
   // i.e. a pixel can have values 0-255, this is the normal
   // range for most image and video formats
-  MapCurveimage512.create(256, 256, CV_8U);
-
+  MapCurveImage512.create(512, 512, CV_8U);
+  
   // Set all matrix values to zero
-  MapCurveimage512 = 0;
+  MapCurveImage512 = 0;
 
   // Show image
-  imshow("GreyCurve", MapCurveimage512);
+  imshow("GreyCurve", MapCurveImage512);
 
   // Sets mouse handler for the specified window
   // void setMouseCallback(const string& winname, MouseCallback onMouse, void* userdata=0)
